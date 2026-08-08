@@ -1,0 +1,16 @@
+{
+    "items": [
+        {
+            "name": "News Sync",
+            "priority": -400,
+            "items": [
+                {
+                    "name": "Fetch Latest News",
+                    "priority": 1,
+                    "action": "/mnt/us/rclone/sync_news.sh",
+                    "exitmenu": true
+                }
+            ]
+        }
+    ]
+}
