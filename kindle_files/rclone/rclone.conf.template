@@ -1,0 +1,6 @@
+[nextcloud_news]
+type = webdav
+url = https://your-nextcloud-domain.com/remote.php/dav/files/YOUR_USERNAME/
+vendor = nextcloud
+user = YOUR_USERNAME
+pass = YOUR_APP_PASSWORD
