@@ -1,8 +1,3 @@
-Here is the updated `README.md` with detailed instructions for downloading and installing the correct 32-bit ARM `rclone` binary. 
-
-You can copy and paste this directly over your current `README.md` file:
-
-```markdown
 # KOReader Nextcloud News Sync
 
 A custom KOReader plugin and shell script suite to automatically fetch daily news EPUBs from a Nextcloud WebDAV folder to a jailbroken Kindle Paperwhite.
@@ -83,4 +78,4 @@ To prevent your Nextcloud `News` folder from filling up indefinitely, add a clea
 # Delete EPUBs older than 3 days from the Nextcloud News folder
 find /path/to/nextcloud/News/ -name "*.epub" -type f -mtime +3 -delete
 ```
-```
+
