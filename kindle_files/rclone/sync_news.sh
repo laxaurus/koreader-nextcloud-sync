@@ -6,7 +6,10 @@ REMOTE=nc_calibre_news:"Books Library"/calibre/books/news
 LOCAL_DIR="/mnt/us/documents/News"
 INDEX="/mnt/us/rclone/.downloaded_news"
 LOG="/mnt/us/rclone/sync.log"
+STATUS_FILE="/mnt/us/rclone/.sync_status"
 
+# Clear any previous status file so Lua knows we are starting fresh
+rm -f "$STATUS_FILE"
 
 NOW=$(date '+%Y-%m-%d %H:%M:%S')
 echo "[$NOW] --- Starting News Sync ---" >> "$LOG"
@@ -14,7 +17,7 @@ echo "[$NOW] --- Starting News Sync ---" >> "$LOG"
 # 1. Network Setup
 echo "[$NOW] [STAGE 1] Enabling Wi-Fi..." >> "$LOG"
 lipc-set-prop com.lab126.cmd wirelessEnable 1
-sleep 5
+sleep 10
 
 # 2. Fetching File List
 echo "[$NOW] [STAGE 2] Fetching file list from Nextcloud (max age 48h)..." >> "$LOG"
@@ -29,10 +32,10 @@ for FILE in $FILES; do
         echo "[$NOW]   -> [SKIP] $FILE (already downloaded)" >> "$LOG"
         continue
     fi
-
+    
     echo "[$NOW]   -> [DOWNLOAD] $FILE" >> "$LOG"
     $RCLONE copy "$REMOTE/$FILE" "$LOCAL_DIR" 2>/dev/null
-
+    
     if [ -f "$LOCAL_DIR/$FILE" ]; then
         echo "$FILE" >> "$INDEX"
         echo "[$NOW]   -> [SUCCESS] $FILE downloaded and indexed" >> "$LOG"
@@ -46,3 +49,6 @@ done
 #echo "[$NOW] [STAGE 4] Sync complete. Disabling Wi-Fi." >> "$LOG"
 #lipc-set-prop com.lab126.cmd wirelessEnable 0
 echo "[$NOW] --- Finished ---" >> "$LOG"
+
+# 5. Signal completion to KOReader
+echo "done" > "$STATUS_FILE"
