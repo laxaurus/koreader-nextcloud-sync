@@ -1,13 +1,13 @@
 {
     "items": [
         {
-            "name": "News Sync",
+            "name": "Reading Queue Sync",
             "priority": -400,
             "items": [
                 {
-                    "name": "Fetch Latest News",
+                    "name": "Sync Reading Queue",
                     "priority": 1,
-                    "action": "/mnt/us/rclone/sync_news.sh",
+                    "action": "/mnt/us/rclone/sync_queue.sh",
                     "exitmenu": true
                 }
             ]
