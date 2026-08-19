@@ -22,53 +22,62 @@ end
 function NextcloudSync:triggerSync()
     local status_file = "/mnt/us/rclone/.sync_status"
 
-    -- Show initial popup
+    -- Show initial toast; refreshed below as progress arrives.
     UIManager:show(InfoMessage:new{
         text = _("Checking queue..."),
-        timeout = 3,
+        timeout = 8,
     })
 
     -- Execute the shell script asynchronously
     os.execute("/mnt/us/rclone/sync_queue.sh > /dev/null 2>&1 &")
 
-    -- Polling variables
-    local poll_interval = 5 -- Check every 5 seconds
-    local max_polls = 12    -- Safety net: stop after 60 seconds (12 * 5s)
-    local poll_count = 0
+    local poll_interval = 3     -- check every 3 seconds
+    local stall_timeout = 300   -- give up only after 5 min with NO status change
+    local last_status = nil     -- last line seen (nil until the first one)
+    local last_change_time = os.time()
+
+    local function showTerminal(text)
+        UIManager:show(InfoMessage:new{ text = text, timeout = 8 })
+    end
 
     -- Define the polling function
     local function checkSyncStatus()
-        poll_count = poll_count + 1
-
-        -- Check if the status file exists and contains "done"
+        local status = nil
         local f = io.open(status_file, "r")
         if f then
-            local status = f:read("*l")
+            status = f:read("*l")
             f:close()
-
-            if status == "done" then
-                -- Clean up the status file for next time
-                os.remove(status_file)
-
-                -- Show completion popup immediately!
-                UIManager:show(InfoMessage:new{
-                    text = _("Queue sync complete!"),
-                    timeout = 3,
-                })
-                return true -- Stop polling
-            end
         end
 
-        -- If timeout reached, show error and stop polling
-        if poll_count >= max_polls then
-            UIManager:show(InfoMessage:new{
-                text = _("Sync timed out. Check sync.log."),
-                timeout = 3,
-            })
+        -- Terminal states.
+        if status == "done" then
+            os.remove(status_file)
+            showTerminal(_("Queue sync complete!"))
+            return true
+        end
+        if status == "empty" then
+            os.remove(status_file)
+            showTerminal(_("Queue is empty — nothing to sync."))
             return true
         end
 
-        -- If not done and not timed out, schedule another check
+        -- Progress line (e.g. "3/5 Book.epub"): refresh the toast when it changes.
+        if status and status ~= last_status then
+            last_status = status
+            last_change_time = os.time()
+            UIManager:show(InfoMessage:new{
+                text = string.format(_("Transferring %s"), status),
+                timeout = 8,
+            })
+        end
+
+        -- Stall detection: only give up if nothing has changed for a long time.
+        if os.time() - last_change_time >= stall_timeout then
+            showTerminal(_("Sync appears stalled. Check sync.log."))
+            return true
+        end
+
+        -- Not done and not stalled, schedule another check
         UIManager:scheduleIn(poll_interval, checkSyncStatus)
     end
 

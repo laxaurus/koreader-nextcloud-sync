@@ -35,6 +35,12 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG"
 }
 
+write_status() {
+    # Atomic single-line write (temp + rename) so the KOReader reader never
+    # sees a partially written line while polling.
+    printf '%s\n' "$1" > "$STATUS_FILE.tmp.$$" && mv "$STATUS_FILE.tmp.$$" "$STATUS_FILE"
+}
+
 # --- Reset status so the KOReader plugin knows a new run has started
 rm -f "$STATUS_FILE"
 log "--- Starting reading queue sync ---"
@@ -72,9 +78,23 @@ if ! $RCLONE lsf "$QUEUE_REMOTE" --files-only --config="$RCLONE_CONF" > "$LIST_T
     exit 1
 fi
 
+# --- Count queued files for progress reporting (i/N)
+TOTAL=$(grep -c '[^[:space:]]' "$LIST_TMP" 2>/dev/null)
+[ -n "$TOTAL" ] || TOTAL=0
+
+if [ "$TOTAL" -eq 0 ]; then
+    log "Queue is empty, nothing to sync"
+    write_status "empty"
+fi
+
+COUNT=0
+
 # --- Process each file: validate, route, download, verify, delete
 while IFS= read -r FILE; do
     [ -z "$FILE" ] && continue
+
+    COUNT=$((COUNT + 1))
+    write_status "$COUNT/$TOTAL $FILE"
 
     EXT=$(printf '%s' "${FILE##*.}" | tr 'A-Z' 'a-z')
     case "$EXT" in
@@ -114,5 +134,9 @@ fi
 
 log "--- Finished reading queue sync ---"
 
-# --- Signal completion to KOReader
-echo "done" > "$STATUS_FILE"
+# --- Signal completion to KOReader (empty queue keeps its own status)
+if [ "$TOTAL" -eq 0 ]; then
+    write_status "empty"
+else
+    write_status "done"
+fi
