@@ -1,8 +1,12 @@
+local Device = require("device")
 local Dispatcher = require("dispatcher")
 local InfoMessage = require("ui/widget/infomessage")
+local ProgressWidget = require("ui/widget/progresswidget")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local _ = require("gettext")
+
+local Screen = Device.screen
 
 local NextcloudSync = WidgetContainer:extend{
     name = "nextcloudsync",
@@ -19,14 +23,44 @@ function NextcloudSync:init()
     })
 end
 
+-- Show a thin, non-blocking progress strip pinned to the top edge of the screen.
+-- toast = true means it stacks above everything and never consumes input,
+-- so the page behind stays fully readable and tappable while it is shown.
+function NextcloudSync:showProgress()
+    local bar_height = Screen:scaleBySize(8)
+    self.progressbar = ProgressWidget:new{
+        width = Screen:getWidth(),
+        height = bar_height,
+        percentage = 0,
+        toast = true,
+    }
+    UIManager:show(self.progressbar, nil, nil, 0, 0)
+end
+
+function NextcloudSync:updateProgress(percent)
+    if self.progressbar then
+        self.progressbar:setPercentage(percent)
+        UIManager:setDirty(self.progressbar)
+    end
+end
+
+function NextcloudSync:hideProgress()
+    if self.progressbar then
+        UIManager:close(self.progressbar)
+        self.progressbar = nil
+    end
+end
+
 function NextcloudSync:triggerSync()
+    -- Re-entrancy guard: one sync at a time.
+    if self.sync_in_progress then
+        return
+    end
+    self.sync_in_progress = true
+
     local status_file = "/mnt/us/rclone/.sync_status"
 
-    -- Show initial toast; refreshed below as progress arrives.
-    UIManager:show(InfoMessage:new{
-        text = _("Checking queue..."),
-        timeout = 8,
-    })
+    self:showProgress()
 
     -- Execute the shell script asynchronously
     os.execute("/mnt/us/rclone/sync_queue.sh > /dev/null 2>&1 &")
@@ -36,7 +70,10 @@ function NextcloudSync:triggerSync()
     local last_status = nil     -- last line seen (nil until the first one)
     local last_change_time = os.time()
 
-    local function showTerminal(text)
+    local function finish(text)
+        self:hideProgress()
+        self.sync_in_progress = false
+        -- Terminal toast is fine here: sync has ended, and a tap dismisses it.
         UIManager:show(InfoMessage:new{ text = text, timeout = 8 })
     end
 
@@ -52,29 +89,29 @@ function NextcloudSync:triggerSync()
         -- Terminal states.
         if status == "done" then
             os.remove(status_file)
-            showTerminal(_("Queue sync complete!"))
-            return true
+            finish(_("Queue sync complete!"))
+            return
         end
         if status == "empty" then
             os.remove(status_file)
-            showTerminal(_("Queue is empty — nothing to sync."))
-            return true
+            finish(_("Queue is empty — nothing to sync."))
+            return
         end
 
-        -- Progress line (e.g. "3/5 Book.epub"): refresh the toast when it changes.
+        -- Progress line (e.g. "3/5 Book.epub"): advance the top strip when it changes.
         if status and status ~= last_status then
             last_status = status
             last_change_time = os.time()
-            UIManager:show(InfoMessage:new{
-                text = string.format(_("Transferring %s"), status),
-                timeout = 8,
-            })
+            local i, n = status:match("^(%d+)/(%d+)")
+            if i and n and tonumber(n) > 0 then
+                self:updateProgress(tonumber(i) / tonumber(n))
+            end
         end
 
         -- Stall detection: only give up if nothing has changed for a long time.
         if os.time() - last_change_time >= stall_timeout then
-            showTerminal(_("Sync appears stalled. Check sync.log."))
-            return true
+            finish(_("Sync appears stalled. Check sync.log."))
+            return
         end
 
         -- Not done and not stalled, schedule another check
